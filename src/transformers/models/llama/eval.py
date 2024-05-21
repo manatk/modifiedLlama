@@ -24,11 +24,12 @@ def evaluate_model(device, config, save_path):
         data.append({"alpha": alpha, "task": "LegalBench", "score": legalBenchScore})
         df = pd.DataFrame(data)
         df.to_csv("benchmark_scores.csv", mode = 'a', index=False)
-    plot_alpha_summation_benchmarks_from_csv()
+    plot_alpha_summation_benchmarks_from_csv(save_path)
 
 '''
-Plots values from benchmark_scores.csv'''
-def plot_alpha_summation_benchmarks_from_csv():
+Plots values from benchmark_scores.csv, and saves plot to save_path
+'''
+def plot_alpha_summation_benchmarks_from_csv(save_path):
     # Load the data
     df = pd.read_csv("benchmark_scores.csv")
     plt.figure()
