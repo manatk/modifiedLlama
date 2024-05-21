@@ -145,7 +145,7 @@ class GPT2Attention(nn.Module):
             persistent=False,
         )
         self.register_buffer("masked_bias", torch.tensor(-1e4), persistent=False)
-
+        self.threshold = config.threshold # adding threshold as config parameter
         self.embed_dim = config.hidden_size
         self.num_heads = config.num_attention_heads
         self.head_dim = self.embed_dim // self.num_heads
@@ -219,7 +219,10 @@ class GPT2Attention(nn.Module):
             attn_weights = attn_weights + attention_mask
 
         attn_weights = nn.functional.softmax(attn_weights, dim=-1)
-
+        # Modification: Zero out insufficienty attended to weights
+        attn_weights[attn_weights < (1 - self.threshold) * self.embed_dim] = 0
+        attn_weights = attn_weights / attn_weights.sum(dim=-1, keepdim=True)
+        # Modification done
         # Downcast (if necessary) back to V's dtype (if in mixed-precision) -- No-Op otherwise
         attn_weights = attn_weights.type(value.dtype)
         attn_weights = self.attn_dropout(attn_weights)
@@ -269,7 +272,11 @@ class GPT2Attention(nn.Module):
             attn_weights = attn_weights + attention_mask
 
         attn_weights = nn.functional.softmax(attn_weights, dim=-1)
-
+        # Modification: Zero out insufficienty attended to weights
+        attn_weights[attn_weights < (1 - self.threshold) * self.embed_dim] = 0
+        attn_weights = attn_weights / attn_weights.sum(dim=-1, keepdim=True)
+        # Modification done
+        
         # Downcast (if necessary) back to V's dtype (if in mixed-precision) -- No-Op if otherwise
         if attn_weights.dtype != torch.float32:
             raise RuntimeError("Error with upcasting, attn_weights does not have dtype torch.float32")

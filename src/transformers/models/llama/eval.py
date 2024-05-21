@@ -1,5 +1,5 @@
 import torch
-from transformers import LlamaTokenizer, AutoTokenizer, LlamaConfig
+from transformers import LlamaTokenizer, AutoTokenizer, LlamaConfig, GPT2Model, GPT2Config
 from modeling_llama import LlamaForCausalLM
 from datasets import load_dataset
 import pandas as pd
@@ -15,7 +15,6 @@ parser.add_argument('alpha', type = float, default = 1,
                     help='choose alpha value')
 args = parser.parse_args()
 
-
 perplexity = load("perplexity", module_type="metric")
 
 '''
@@ -25,7 +24,7 @@ def evaluate_model_alpha(device, config, alpha, tokenizer, write_path):
     # Create model for each alpha value
     config.threshold = alpha
     print("Evaluating first model with alpha = " + str(alpha))
-    model = LlamaForCausalLM.from_pretrained("meta-llama/Meta-Llama-3-8B", config=config).to(device)
+    model = GPT2Model.from_pretrained("meta-llama/Meta-Llama-3-8B", config=config).to(device)
     # Run benchmark on created model
     #bookSumScore, legalBenchScore = get_score(model, "BookSum"), get_score(model, "LegalBench")
     bookSumScore = get_score(model, "BookSum", tokenizer)
@@ -46,7 +45,7 @@ def evaluate_model(device, config, save_path, tokenizer, write_path):
     for alpha in alpha_values:
         config.threshold = alpha
         print("Evaluating first model with alpha = " + str(alpha))
-        model = LlamaForCausalLM.from_pretrained("meta-llama/Meta-Llama-3-8B", config=config).to(device)
+        model = GPT2Model.from_pretrained("meta-llama/Meta-Llama-3-8B", config=config).to(device)
         # Run benchmark on created model
         #bookSumScore, legalBenchScore = get_score(model, "BookSum"), get_score(model, "LegalBench")
         bookSumScore = get_score(model, "BookSum", tokenizer)
@@ -166,7 +165,7 @@ def main():
     
     # Create tokenizer and config
     tokenizer = AutoTokenizer.from_pretrained('meta-llama/Meta-Llama-3-8B', padding=True, truncation=True, max_length=4096)
-    config = LlamaConfig.from_pretrained('meta-llama/Meta-Llama-3-8B')
+    config = GPT2Config.from_pretrained('meta-llama/Meta-Llama-3-8B')
     config.mlp_bias = False  # Set mlp_bias to False
     config._attn_implementation = "eager"
     print("Entering main function...")
