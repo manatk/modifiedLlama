@@ -23,7 +23,7 @@ def evaluate_model_alpha(device, config, alpha, tokenizer, write_path):
     # Create model for each alpha value
     config.threshold = alpha
     print("Evaluating first model with alpha = " + str(alpha))
-    model = GPT2Model(config)
+    model = GPT2Model.from_pretrained('gpt2', config=config).to(device)
     # Run benchmark on created model
     #bookSumScore, legalBenchScore = get_score(model, "BookSum"), get_score(model, "LegalBench")
     bookSumScore = get_score(model, "BookSum", tokenizer)
@@ -44,7 +44,7 @@ def evaluate_model(device, config, save_path, tokenizer, write_path):
     for alpha in alpha_values:
         config.threshold = alpha
         print("Evaluating first model with alpha = " + str(alpha))
-        model = GPT2Model.from_pretrained("meta-llama/Meta-Llama-3-8B", config=config).to(device)
+        model = GPT2Model.from_pretrained('gpt2', config=config).to(device)
         # Run benchmark on created model
         #bookSumScore, legalBenchScore = get_score(model, "BookSum"), get_score(model, "LegalBench")
         bookSumScore = get_score(model, "BookSum", tokenizer)
@@ -108,7 +108,7 @@ def get_score(model, task, tokenizer):
         generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
         generated_texts.append(generated_text)
         # Calculate perplexity
-    results = perplexity.compute(predictions=generated_texts, model_id='meta-llama/Meta-Llama-3-8B')
+    results = perplexity.compute(predictions=generated_texts, model_id='gpt2')
     return results['mean_perplexity']
 
 '''
@@ -163,8 +163,8 @@ def evalLegalBench():
 def main():
     
     # Create tokenizer and config
-    tokenizer = AutoTokenizer.from_pretrained("openai-community/gpt2", padding=True, truncation=True, max_length=4096)
-    config = GPT2Config.from_pretrained("openai-community/gpt2")
+    tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+    config = GPT2Config.from_pretrained('gpt2')
     config.mlp_bias = False  # Set mlp_bias to False
     config._attn_implementation = "eager"
     print("Entering main function...")
