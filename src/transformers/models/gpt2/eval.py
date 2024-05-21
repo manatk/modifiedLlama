@@ -1,5 +1,5 @@
 import torch
-from transformers import AutoTokenizer, GPT2Model, GPT2Config
+from transformers import AutoTokenizer, GPT2Model, GPT2Config, GPT2LMHeadModel
 from datasets import load_dataset
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -9,8 +9,8 @@ import argparse
 # Adding argparse for choosing mode
 parser = argparse.ArgumentParser(description='Select mode.')
 parser.add_argument('mode', metavar='N', type=str, nargs='?', default = 'r',
-                    help='Choose whether to run model (\'r\') or plot (\'p\')')
-parser.add_argument('alpha', type = float, default = 1,
+                    help='Choose whether to run model with all alpha values (\'a\'), one alpha value (\'r\'), or plot (\'p\')')
+parser.add_argument('alpha', type = float, nargs='?', default = 1,
                     help='choose alpha value')
 args = parser.parse_args()
 
@@ -23,10 +23,10 @@ def evaluate_model_alpha(device, config, alpha, tokenizer, write_path):
     # Create model for each alpha value
     config.threshold = alpha
     print("Evaluating first model with alpha = " + str(alpha))
-    model = GPT2Model.from_pretrained('gpt2', config=config).to(device)
+    model = GPT2LMHeadModel.from_pretrained('gpt2', config=config).to(device)
     # Run benchmark on created model
     #bookSumScore, legalBenchScore = get_score(model, "BookSum"), get_score(model, "LegalBench")
-    bookSumScore = get_score(model, "BookSum", tokenizer)
+    bookSumScore = get_score(device, model, "BookSum", tokenizer)
     data = []
     data.append({"alpha": alpha, "task": "BookSum", "score": bookSumScore})
     #data.append({"alpha": alpha, "task": "LegalBench", "score": legalBenchScore})
@@ -47,7 +47,7 @@ def evaluate_model(device, config, save_path, tokenizer, write_path):
         model = GPT2Model.from_pretrained('gpt2', config=config).to(device)
         # Run benchmark on created model
         #bookSumScore, legalBenchScore = get_score(model, "BookSum"), get_score(model, "LegalBench")
-        bookSumScore = get_score(model, "BookSum", tokenizer)
+        bookSumScore = get_score(device, model, "BookSum", tokenizer)
         data = []
         data.append({"alpha": alpha, "task": "BookSum", "score": bookSumScore})
         #data.append({"alpha": alpha, "task": "LegalBench", "score": legalBenchScore})
@@ -77,7 +77,7 @@ def plot_alpha_summation_benchmarks_from_csv(load_path, save_path):
 Returns score on evalBookSum for a given model, associated with a given alpha value. 
 Score is the average of all the perplexities for each of the test data entries, multiplied by -1.
 '''
-def get_score(model, task, tokenizer):
+def get_score(device, model, task, tokenizer):
     testData = None
     if task == "BookSum":
         testData = load_dataset("kmfoda/booksum")["test"]
@@ -104,7 +104,7 @@ def get_score(model, task, tokenizer):
 
         # Forward pass into model
         with torch.no_grad():
-            outputs = model.generate(inputs.input_ids.to('mps'))
+            outputs = model.generate(inputs.input_ids.to(device), max_length = 1000)
         generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
         generated_texts.append(generated_text)
         # Calculate perplexity
@@ -182,6 +182,9 @@ def main():
     if args.mode == 'r':
         print("Running model on given alpha = " + str(args.alpha)+ "...")
         evaluate_model_alpha(device, config, args.alpha, tokenizer, write_path)
+    elif args.mode == 'a':
+        print("Running model on all alpha values...")
+        evaluate_model(device, config, tokenizer, write_path)
     elif args.mode == 'p':
         print("Plotting benchmark scores...")
         plot_alpha_summation_benchmarks_from_csv(write_path, save_path)
