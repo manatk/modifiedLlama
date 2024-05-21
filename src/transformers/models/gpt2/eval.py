@@ -23,7 +23,7 @@ def evaluate_model_alpha(device, config, alpha, tokenizer, write_path):
     # Create model for each alpha value
     config.threshold = alpha
     print("Evaluating first model with alpha = " + str(alpha))
-    model = GPT2Model.from_pretrained("meta-llama/Meta-Llama-3-8B", config=config).to(device)
+    model = GPT2Model(config)
     # Run benchmark on created model
     #bookSumScore, legalBenchScore = get_score(model, "BookSum"), get_score(model, "LegalBench")
     bookSumScore = get_score(model, "BookSum", tokenizer)
