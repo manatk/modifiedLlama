@@ -2,6 +2,7 @@ import torch
 from transformers import LlamaTokenizer, AutoTokenizer, LlamaConfig
 from modeling_llama import LlamaForCausalLM
 from datasets import load_dataset
+import pandas as pd
 import matplotlib.pyplot as plt
 
 '''
@@ -10,15 +11,37 @@ Gets benchmark scores of each model. Then saves generated plots on save_path.
 '''
 def evaluate_model(device, config, save_path):
     alpha_values = [0, .5, .6, .7, .8, .9, .95, 0.97, 0.99]
-    scores = {"BookSum": [], "LegalBench": []}
+    scores = {"BookSum": {alpha: [] for alpha in alpha_values}, "LegalBench": {alpha: [] for alpha in alpha_values}}
     # Create model for each alpha value
     for alpha in alpha_values:
         config.threshold = alpha
+        print("Evaluating first model with alpha = " + str(alpha))
         model = LlamaForCausalLM.from_pretrained("meta-llama/Meta-Llama-3-8B", config=config).to(device)
         # Run benchmark on created model
-        scores["BookSum"].append(get_score(model, "BookSum"))
-        scores["LegalBench"].append(get_score(model, "LegalBench"))
-    plot_alpha_summation_benchmarks(alpha_values, scores, save_path)
+        bookSumScore, legalBenchScore = get_score(model, "BookSum"), get_score(model, "LegalBench")
+        data = []
+        data.append({"alpha": alpha, "task": "BookSum", "score": bookSumScore})
+        data.append({"alpha": alpha, "task": "LegalBench", "score": legalBenchScore})
+        df = pd.DataFrame(data)
+        df.to_csv("benchmark_scores.csv", mode = 'a', index=False)
+    plot_alpha_summation_benchmarks_from_csv()
+
+'''
+Plots values from benchmark_scores.csv'''
+def plot_alpha_summation_benchmarks_from_csv():
+    # Load the data
+    df = pd.read_csv("benchmark_scores.csv")
+    plt.figure()
+    for task, scores in benchmark_scores.items():
+        print(f"Plotting scores for {dataset}: {scores}")
+        plt.plot(alpha_values, scores, label=task)
+    plt.xlabel('Alpha Summation Values')
+    plt.ylabel('Benchmark Scores')
+    plt.title(f'Benchmark Scores vs. Alpha Summation Values')
+    plt.legend()
+    plt.savefig(save_path)
+    plt.show()
+
 
 '''
 Returns score on evalBookSum for a given model, associated with a given alpha value. 
@@ -61,9 +84,9 @@ benchmark_scores - scores associated with each alpha value
 '''
 def plot_alpha_summation_benchmarks(alpha_values, benchmark_scores, save_path):
     plt.figure()
-    for dataset, scores in benchmark_scores.items():
+    for task, scores in benchmark_scores.items():
         print(f"Plotting scores for {dataset}: {scores}")
-        plt.plot(alpha_values, scores, label=dataset)
+        plt.plot(alpha_values, scores, label=task)
     plt.xlabel('Alpha Summation Values')
     plt.ylabel('Benchmark Scores')
     plt.title(f'Benchmark Scores vs. Alpha Summation Values')

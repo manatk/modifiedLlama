@@ -351,9 +351,10 @@ class LlamaAttention(nn.Module):
         #print(attn_weights)
         attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
         attn_weights = attn_weights / attn_weights.sum(dim=-1, keepdim=True)
+        # Modification: Zero out insufficienty attended to weights
         attn_weights[attn_weights < 1 - self.hidden_size * self.threshold] = 0
-        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
         attn_weights = attn_weights / attn_weights.sum(dim=-1, keepdim=True)
+        # Modification done
         attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
         attn_output = torch.matmul(attn_weights, value_states)
         
