@@ -163,7 +163,7 @@ def evalLegalBench():
 def main():
     
     # Create tokenizer and config
-    tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+    tokenizer = AutoTokenizer.from_pretrained('gpt2')
     config = GPT2Config.from_pretrained('gpt2')
     config.mlp_bias = False  # Set mlp_bias to False
     config._attn_implementation = "eager"
