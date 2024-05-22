@@ -1,11 +1,14 @@
 import torch
 from transformers import AutoTokenizer, GPT2Model, GPT2Config, GPT2LMHeadModel
+from custom_model import GPT2WithThresholdedAttention
 from datasets import load_dataset
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from evaluate import load
 import argparse
+
+MAX_LENGTH = 1000 # Max length for input sequence
 
 # Adding argparse for choosing mode
 parser = argparse.ArgumentParser(description='Select mode.')
@@ -20,7 +23,7 @@ args = parser.parse_args()
 perplexity = load("perplexity", module_type="metric")
 
 '''
-Creates attention mask from attentions of Tuple of tensor (batch_size, num_heads, seq_length, seq_length)
+Creates attention mask from attentions = Tuple of tensor (batch_size, num_heads, seq_length, seq_length)
 
 Attention mask is of size (batch_size, seq_length)
 '''
@@ -35,6 +38,7 @@ def create_attention_mask(attentions, alpha):
     print("Attention masks created.")
     return torch.from_numpy(masks).to(attentions[0].device)
 
+
 '''
 Runs different alpha_values to generate various models using the mask method, with parameters specified by config.
 Gets benchmark scores of each model. Then saves generated plots on save_path.
@@ -48,12 +52,20 @@ def evaluate_model_mask_alpha(device, alpha, config, tokenizer, task, n, write_p
     generated_texts = []
     for i in range(0, n):
         print("Forward passing for alpha = " + str(alpha), ", iteration " + str(i+1) + "/" + str(n))
-        generated_text = forward_pass_mask(device, config, tokenizer, task, alpha, testData, i, layer)
+        inputs = None
+        if task == "BookSum":
+            prompt = testData[i]['chapter'] + "Summarize this chapter"
+            inputs = tokenizer(prompt, return_tensors="pt", max_length=MAX_LENGTH, truncation=True)
+        elif task == "LegalBench":
+            prompt = testData[i]['contract'] + testData[i]["question"]
+            inputs = tokenizer(prompt, return_tensors="pt", max_length=MAX_LENGTH, truncation=True)
+        config.alpha = alpha
+        generated_text = forward_pass(device, config, inputs, tokenizer)
         generated_texts.append(generated_text)
     # Get score
     bookSumScore = get_score(generated_texts)
     data = []
-    data.append({"alpha": alpha, "task": "BookSum", "score": bookSumScore, "n": n})
+    data.append({"alpha": alpha, "task": task, "score": bookSumScore, "n": n})
     #data.append({"alpha": alpha, "task": "LegalBench", "score": legalBenchScore})
     df = pd.DataFrame(data)
     df.to_csv(write_path, mode = 'a', index=False)
@@ -77,7 +89,15 @@ def evaluate_model_mask(device, config, tokenizer, task, n, write_path, layer=0)
         generated_texts = []
         for i in range(0, n):
             print("Forward passing for alpha = " + str(alpha), ", iteration " + str(i+1) + "/" + str(n))
-            generated_text = forward_pass_mask(device, config, tokenizer, task, alpha, testData, i,layer)
+            inputs = None
+            if task == "BookSum":
+                prompt = testData[i]['chapter'] + "Summarize this chapter"
+                inputs = tokenizer(prompt, return_tensors="pt", max_length=MAX_LENGTH, truncation=True)
+            elif task == "LegalBench":
+                prompt = testData[i]['contract'] + testData[i]["question"]
+                inputs = tokenizer(prompt, return_tensors="pt", max_length=MAX_LENGTH, truncation=True)
+            config.alpha = alpha
+            generated_text = forward_pass(device, config, inputs, tokenizer)
             generated_texts.append(generated_text)
         # Get score
         score = get_score(generated_texts)
@@ -94,25 +114,10 @@ Example (x,y) to pass is specified hrough testData and index i
 Mdoel is specified through config
 We use alpha to create attentionmask
 '''
-def forward_pass_mask(device, config, tokenizer, task, alpha, testData, i, layer=0):
-    # Get inputs
-    max_length = 1000 # Truncate if exceeds
-    inputs = None
-    if task == "BookSum":
-        prompt = testData[i]['chapter'] + "Summarize this chapter"
-        inputs = tokenizer(prompt, return_tensors="pt", max_length=max_length, truncation=True)
-    elif task == "LegalBench":
-        prompt = testData[i]['contract'] + testData[i]["question"]
-        inputs = tokenizer(prompt, return_tensors="pt", max_length=max_length, truncation=True)
-    # Forward pass into model
+def forward_pass(device, config, inputs, tokenizer):
     with torch.no_grad():
-        # Create model without attention mask
-        model = GPT2LMHeadModel.from_pretrained('gpt2', config=config).to(device)
-        output = model.generate(inputs.input_ids.to(device), output_attentions = True, max_length = max_length+1, return_dict_in_generate=True)
-        mask = create_attention_mask(output['attentions'], alpha)
-        torch.cuda.empty_cache()
-        # Create model with attention mask
-        output = model.generate(inputs.input_ids.to(device), max_length = max_length+1, attention_mask = mask[layer])
+        model = GPT2WithThresholdedAttention.from_pretrained('gpt2', config=config).to(device)
+        output = model.generate(inputs.input_ids.to(device), max_length = MAX_LENGTH+1)
         generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
         return generated_text
 
@@ -125,7 +130,7 @@ def plot_alpha_summation_benchmarks_from_csv(load_path, save_path, n):
     data = pd.read_csv(load_path)
     plt.figure()
     alpha = data['alpha']
-    scores = data['scores']
+    scores = data['score']
     tasks = data['task']
 
     # Step 3: Create scatter plot
@@ -137,13 +142,13 @@ def plot_alpha_summation_benchmarks_from_csv(load_path, save_path, n):
     # Plot each task with different colors
     for task in unique_tasks:
         task_data = data[data['task'] == task]
-        plt.scatter(task_data['alpha'], task_data['scores'], label=task, alpha=0.75)
-    plt.xlabel('Alpha Summation Values')
-    plt.ylabel('Benchmark Scores')
-    plt.title(f'Benchmark Scores vs. Alpha Summation Values:')
-    plt.legend()
-    plt.savefig(save_path)
-    plt.show()
+        plt.scatter(task_data['alpha'], task_data['score'], label=task, alpha=0.75)
+        plt.xlabel('Alpha Summation Values')
+        plt.ylabel('Benchmark Scores')
+        plt.title(f'Benchmark Scores vs. Alpha Summation Values, Task = ' + str(task))
+        plt.legend()
+        plt.savefig(save_path + "_layer=0_task=" + str(task) + ".png")
+        plt.show()
 
 
 '''
@@ -156,54 +161,6 @@ def get_score(outputs):
     print("Got perplexity of " + str(score))
     return score
 
-'''
-Function to plot benchmark scores for different alpha values
-
-Params:
-alpha_values - list of alpha values
-benchmark_scores - scores associated with each alpha value
-'''
-def plot_alpha_summation_benchmarks(alpha_values, benchmark_scores, save_path):
-    plt.figure()
-    for task, scores in benchmark_scores.items():
-        #print(f"Plotting scores for {dataset}: {scores}")
-        plt.plot(alpha_values, scores, label=task)
-    plt.xlabel('Alpha Summation Values')
-    plt.ylabel('Benchmark Scores')
-    plt.title(f'Benchmark Scores vs. Alpha Summation Values')
-    plt.legend()
-    plt.savefig(save_path)
-    plt.show()
-'''
-Creates scatter plot of perplexity against alpha value'''
-def plot_perplexities(alpha_values, perplexities):
-    plt.figure()
-    plt.scatter(alpha_values, perplexities)
-    # Adding labels and title
-    plt.title('Perplexity vs Alpha Value')
-    plt.xlabel('Alpha Value')
-    plt.ylabel('Perplexity')
-'''
-Returns score on evalLegalBench for a given model, associated with a given alpha value. 
-Score is the average of all the perplexities for each of the test data entries, multiplied by -1.'''
-'''
-def evalLegalBench():
-    legalBench = load_dataset("nguha/legalbench", "consumer_contracts_qa")
-    testData = legalBench["test"]
-    for i in range(0, len(testData)):
-        prompt = testData[i]['contract'] + testData[i]["question"]
-        inputs = tokenizer(prompt, return_tensors="pt")
-        input_ids = inputs["input_ids"]
-        attention_mask = inputs["attention_mask"]
-
-        # Run the model
-        with torch.no_grad():
-            outputs = model.generate(inputs.input_ids)
-
-        generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-        print(generated_text)
-        print(testData[i]["answers"]["text"][0])
-        print("\n")'''
 
 def main():
     
@@ -222,7 +179,7 @@ def main():
     print(f"Using device: {device}")
     # Running alpha summation
     write_path = "benchmark_scores.csv"
-    save_path = "alpha_summation_benchmarks.png"
+    save_path = "alpha_summation_benchmarks"
     # Choose whether to run model or plot
     n = 20 # numbers of examples to consider
     if args.mode == 'r':
@@ -233,7 +190,7 @@ def main():
         evaluate_model_mask(device, config, tokenizer, args.task, n, write_path,0)
     elif args.mode == 'p':
         print("Plotting benchmark scores...")
-        plot_alpha_summation_benchmarks_from_csv(write_path, save_path)
+        plot_alpha_summation_benchmarks_from_csv(write_path, save_path, n)
 
 
 if __name__ == '__main__':
