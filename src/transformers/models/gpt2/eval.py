@@ -39,20 +39,21 @@ def create_attention_mask(attentions, alpha):
 Runs different alpha_values to generate various models using the mask method, with parameters specified by config.
 Gets benchmark scores of each model. Then saves generated plots on save_path.
 '''
-def evaluate_model_mask_alpha(device, alpha, config, tokenizer, task, write_path, layer=0):
+def evaluate_model_mask_alpha(device, alpha, config, tokenizer, task, n, write_path, layer=0):
     testData = None
     if task == "BookSum":
         testData = load_dataset("kmfoda/booksum")["test"]
     elif task == "LegalBench":
         testData = load_dataset("nguha/legalbench", "consumer_contracts_qa")["test"]
     generated_texts = []
-    for i in range(0, 10):
+    for i in range(0, n):
+        print("Forward passing for alpha = " + str(alpha), ", iteration " + str(i+1) + "/" + str(n))
         generated_text = forward_pass_mask(device, config, tokenizer, task, alpha, testData, i, layer)
         generated_texts.append(generated_text)
     # Get score
     bookSumScore = get_score(generated_texts)
     data = []
-    data.append({"alpha": alpha, "task": "BookSum", "score": bookSumScore})
+    data.append({"alpha": alpha, "task": "BookSum", "score": bookSumScore, "n": n})
     #data.append({"alpha": alpha, "task": "LegalBench", "score": legalBenchScore})
     df = pd.DataFrame(data)
     df.to_csv(write_path, mode = 'a', index=False)
@@ -60,8 +61,10 @@ def evaluate_model_mask_alpha(device, alpha, config, tokenizer, task, write_path
 '''
 Runs different alpha_values to generate various models using the mask method, with parameters specified by config.
 Gets benchmark scores of each model. Then saves generated plots on save_path.
+
+Tests on the first n examlpes in the benchmark task
 '''
-def evaluate_model_mask(device, config, tokenizer, task, write_path, layer=0):
+def evaluate_model_mask(device, config, tokenizer, task, n, write_path, layer=0):
     testData = None
     if task == "BookSum":
         testData = load_dataset("kmfoda/booksum")["test"]
@@ -72,13 +75,14 @@ def evaluate_model_mask(device, config, tokenizer, task, write_path, layer=0):
     # Create model for each alpha value
     for alpha in alpha_values:
         generated_texts = []
-        for i in range(0, 3):
+        for i in range(0, n):
+            print("Forward passing for alpha = " + str(alpha), ", iteration " + str(i+1) + "/" + str(n))
             generated_text = forward_pass_mask(device, config, tokenizer, task, alpha, testData, i,layer)
             generated_texts.append(generated_text)
         # Get score
-        bookSumScore = get_score(generated_texts)
+        score = get_score(generated_texts)
         data = []
-        data.append({"alpha": alpha, "task": "BookSum", "score": bookSumScore})
+        data.append({"alpha": alpha, "task": task, "score": score, "n": n})
         #data.append({"alpha": alpha, "task": "LegalBench", "score": legalBenchScore})
         df = pd.DataFrame(data)
         df.to_csv(write_path, mode = 'a', index=False)
@@ -91,28 +95,24 @@ Mdoel is specified through config
 We use alpha to create attentionmask
 '''
 def forward_pass_mask(device, config, tokenizer, task, alpha, testData, i, layer=0):
-    print("Forward passing for alpha = " + str(alpha))
     # Get inputs
+    max_length = 1000 # Truncate if exceeds
     inputs = None
     if task == "BookSum":
         prompt = testData[i]['chapter'] + "Summarize this chapter"
-        length = min(len(prompt), 4000)
-        prompt = prompt[:length]
-        inputs = tokenizer(prompt, return_tensors="pt")
-    '''
+        inputs = tokenizer(prompt, return_tensors="pt", max_length=max_length, truncation=True)
     elif task == "LegalBench":
         prompt = testData[i]['contract'] + testData[i]["question"]
-        inputs = tokenizer(prompt, return_tensors="pt")
-    '''
+        inputs = tokenizer(prompt, return_tensors="pt", max_length=max_length, truncation=True)
     # Forward pass into model
     with torch.no_grad():
         # Create model without attention mask
         model = GPT2LMHeadModel.from_pretrained('gpt2', config=config).to(device)
-        output = model.generate(inputs.input_ids.to(device), output_attentions = True, max_length = 1000, return_dict_in_generate=True)
+        output = model.generate(inputs.input_ids.to(device), output_attentions = True, max_length = max_length+1, return_dict_in_generate=True)
         mask = create_attention_mask(output['attentions'], alpha)
         torch.cuda.empty_cache()
         # Create model with attention mask
-        output = model.generate(inputs.input_ids.to(device), max_length = 1000, attention_mask = mask[layer])
+        output = model.generate(inputs.input_ids.to(device), max_length = max_length+1, attention_mask = mask[layer])
         generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
         return generated_text
 
@@ -120,16 +120,27 @@ def forward_pass_mask(device, config, tokenizer, task, alpha, testData, i, layer
 '''
 Plots values from write_path, and saves plot to save_path
 '''
-def plot_alpha_summation_benchmarks_from_csv(load_path, save_path):
+def plot_alpha_summation_benchmarks_from_csv(load_path, save_path, n):
     # Load the data
-    df = pd.read_csv(load_path)
+    data = pd.read_csv(load_path)
     plt.figure()
-    for task, scores in benchmark_scores.items():
-        print(f"Plotting scores for {dataset}: {scores}")
-        plt.plot(alpha_values, scores, label=task)
+    alpha = data['alpha']
+    scores = data['scores']
+    tasks = data['task']
+
+    # Step 3: Create scatter plot
+    plt.figure(figsize=(10, 6))
+
+    # Get unique tasks
+    unique_tasks = data['task'].unique()
+
+    # Plot each task with different colors
+    for task in unique_tasks:
+        task_data = data[data['task'] == task]
+        plt.scatter(task_data['alpha'], task_data['scores'], label=task, alpha=0.75)
     plt.xlabel('Alpha Summation Values')
     plt.ylabel('Benchmark Scores')
-    plt.title(f'Benchmark Scores vs. Alpha Summation Values')
+    plt.title(f'Benchmark Scores vs. Alpha Summation Values:')
     plt.legend()
     plt.savefig(save_path)
     plt.show()
@@ -213,12 +224,13 @@ def main():
     write_path = "benchmark_scores.csv"
     save_path = "alpha_summation_benchmarks.png"
     # Choose whether to run model or plot
+    n = 20 # numbers of examples to consider
     if args.mode == 'r':
         print("Running model on given alpha = " + str(args.alpha)+ "...")
-        evaluate_model_mask_alpha(device, args.alpha, config, tokenizer, args.task, write_path, layer=0)
+        evaluate_model_mask_alpha(device, args.alpha, config, tokenizer, args.task, n, write_path, layer=0)
     elif args.mode == 'a':
         print("Running model on all alpha values...")
-        evaluate_model_mask(device, config, tokenizer, args.task, write_path,0)
+        evaluate_model_mask(device, config, tokenizer, args.task, n, write_path,0)
     elif args.mode == 'p':
         print("Plotting benchmark scores...")
         plot_alpha_summation_benchmarks_from_csv(write_path, save_path)
