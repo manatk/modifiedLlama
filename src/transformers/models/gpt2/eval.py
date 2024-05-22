@@ -6,6 +6,8 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from evaluate import load
+import evaluate
+import bleu
 import argparse
 
 MAX_LENGTH = 1000 # Max length for input sequence
@@ -38,6 +40,14 @@ def create_attention_mask(attentions, alpha):
     print("Attention masks created.")
     return torch.from_numpy(masks).to(attentions[0].device)
 
+'''
+Get rouge and bleu score'''
+def get_score_rouge(predictions, actual):
+    #results = rouge.compute(predictions=predictions, references=actual, use_aggregator=True)
+    results = bleu.compute(predictions=predictions, references=actual)
+    score = results['bleu']
+    print(results)
+    return score
 
 '''
 Runs different alpha_values to generate various models using the mask method, with parameters specified by config.
@@ -63,9 +73,10 @@ def evaluate_model_mask_alpha(device, alpha, config, tokenizer, task, n, write_p
         generated_text = forward_pass(device, config, inputs, tokenizer)
         generated_texts.append(generated_text)
     # Get score
-    bookSumScore = get_score(generated_texts)
+    #score = get_score(generated_texts)
+    score = get_score(generated_texts, testData[i]["summary_text"])
     data = []
-    data.append({"alpha": alpha, "task": task, "score": bookSumScore, "n": n})
+    data.append({"alpha": alpha, "task": task, "score": score, "n": n})
     #data.append({"alpha": alpha, "task": "LegalBench", "score": legalBenchScore})
     df = pd.DataFrame(data)
     df.to_csv(write_path, mode = 'a', index=False)
@@ -100,7 +111,8 @@ def evaluate_model_mask(device, config, tokenizer, task, n, write_path, layer=0)
             generated_text = forward_pass(device, config, inputs, tokenizer)
             generated_texts.append(generated_text)
         # Get score
-        score = get_score(generated_texts)
+        #score = get_score(generated_texts)
+        score = get_score(generated_texts, testData[i]["summary_text"])
         data = []
         data.append({"alpha": alpha, "task": task, "score": score, "n": n})
         #data.append({"alpha": alpha, "task": "LegalBench", "score": legalBenchScore})
