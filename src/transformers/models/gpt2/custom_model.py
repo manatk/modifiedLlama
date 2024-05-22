@@ -118,12 +118,6 @@ class GPT2WithThresholdedAttention(GPT2LMHeadModel):
             # Create a mask from sorted weights where cumulative sum is less than alpha * total_sum
             mask_sorted = cumulative_sum < (alpha * total_sum)
             
-            # We need to revert this mask back to the order of the original attention weights
-            # Expand dimensions of indices for broadcasting
-            # Create a tensor for broadcasting range
-            batch_size, num_heads, seq_length, _ = attention.shape
-            range_tensor = torch.arange(seq_length).unsqueeze(0).unsqueeze(0).unsqueeze(0).expand(batch_size, num_heads, seq_length, seq_length)
-
             # Reorder mask_sorted back to the original attention shape
             mask = torch.zeros_like(mask_sorted)
             mask.scatter_(dim=3, index=indices, src=mask_sorted)
