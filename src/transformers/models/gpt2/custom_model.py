@@ -111,13 +111,26 @@ class GPT2WithThresholdedAttention(GPT2LMHeadModel):
         # Iterate over each layer
         for layer_idx, attention in enumerate(attentions):
             # Each attention is of size (batch_size, num_heads, seq_length, seq_length)
-            sorted_weights, indices = torch.sort(attention, dim = 3, descending=True) # Size (batch_size, num_heads, seq_length, seq_length)
-            cumulative_sum = torch.cumsum(sorted_weights, dim=3) # Size (batch_size, num_heads, seq_length, seq_length)
-            total_sum = cumulative_sum[:,:,:,-1].unsqueeze(dim=3) # Size (batch_size, num_heads, seq_length, 1)
-            idx = torch.nonzero(cumulative_sum < alpha * total_sum, as_tuple = True) # Size (batch_size, num_heads, seq_length, z) for z nonzero entries
-            # Create mask for attention value
-            mask = torch.zeros_like(attention)
-            mask[idx] = True
-            new_attention = attention * mask
+            sorted_weights, indices = torch.sort(attention, dim=3, descending=True)  # Sorted along last dimension
+            cumulative_sum = torch.cumsum(sorted_weights, dim=3)  # Cumulative sum of sorted weights
+            total_sum = cumulative_sum[:, :, :, -1].unsqueeze(dim=3)  # Total sum along the last dimension
+
+            # Create a mask from sorted weights where cumulative sum is less than alpha * total_sum
+            mask_sorted = cumulative_sum < (alpha * total_sum)
+            
+            # We need to revert this mask back to the order of the original attention weights
+            # Expand dimensions of indices for broadcasting
+            # Create a tensor for broadcasting range
+            batch_size, num_heads, seq_length, _ = attention.shape
+            range_tensor = torch.arange(seq_length).unsqueeze(0).unsqueeze(0).unsqueeze(0).expand(batch_size, num_heads, seq_length, seq_length)
+
+            # Reorder mask_sorted back to the original attention shape
+            mask = torch.zeros_like(mask_sorted)
+            mask.scatter_(dim=3, index=indices, src=mask_sorted)
+
+            # Apply mask to the original attention weights
+            new_attention = attention * mask.float()  # Convert mask to float for multiplication
+            new_attention = new_attention / new_attention.sum(dim=3, keepdim=True) # Renormalize
             new_attentions.append(new_attention)
+
         return new_attentions
