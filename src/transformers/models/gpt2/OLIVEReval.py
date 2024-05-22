@@ -22,8 +22,7 @@ parser.add_argument('task', type = str, nargs='?', default = "BookSum",
 args = parser.parse_args()
 
 perplexity = load("perplexity", module_type="metric")
-rouge = load('rouge')
-bleu = load('bleu')
+bleu = load("bleu")
 
 '''
 Creates attention mask from attentions = Tuple of tensor (batch_size, num_heads, seq_length, seq_length)
@@ -44,8 +43,9 @@ def create_attention_mask(attentions, alpha):
 '''
 Get rouge and bleu score'''
 def get_score_rouge(predictions, actual):
-    results = rouge.compute(predictions=predictions, references=actual, use_aggregator=True)
-    #results = rouge.compute(predictions=predictions, references=actual)
+    #results = rouge.compute(predictions=predictions, references=actual, use_aggregator=True)
+    results = bleu.compute(predictions=predictions, references=actual)
+    #score = results['bleu']
     print(results)
     #return score
 
@@ -60,11 +60,11 @@ def evaluate_model_mask_alpha(device, alpha, config, tokenizer, task, n, write_p
     elif task == "LegalBench":
         testData = load_dataset("nguha/legalbench", "consumer_contracts_qa")["test"]
     generated_texts = []
-    actual_texts = []
+    actual_values = []
     for i in range(0, n):
         print("Forward passing for alpha = " + str(alpha), ", iteration " + str(i+1) + "/" + str(n))
+        actual_values.append(testData[i]['summary_text'])
         inputs = None
-        actual_texts.append(testData[i]['summary_text'])
         if task == "BookSum":
             prompt = testData[i]['chapter'] + "Summarize this chapter"
             inputs = tokenizer(prompt, return_tensors="pt", max_length=MAX_LENGTH, truncation=True)
@@ -75,8 +75,8 @@ def evaluate_model_mask_alpha(device, alpha, config, tokenizer, task, n, write_p
         generated_text = forward_pass(device, config, inputs, tokenizer)
         generated_texts.append(generated_text)
     # Get score
-    score = get_score(generated_texts)
-    score = get_score_rouge(generated_texts, actual_texts)
+    #score = get_score(generated_texts)
+    score = get_score_rouge(generated_texts, actual_values)
     data = []
     data.append({"alpha": alpha, "task": task, "score": score, "n": n})
     #data.append({"alpha": alpha, "task": "LegalBench", "score": legalBenchScore})
@@ -114,7 +114,7 @@ def evaluate_model_mask(device, config, tokenizer, task, n, write_path, layer=0)
             generated_texts.append(generated_text)
         # Get score
         #score = get_score(generated_texts)
-        score = get_score_rouge(generated_texts, testData[i]["summary_text"])
+        score = get_score(generated_texts, testData[i]["summary_text"])
         data = []
         data.append({"alpha": alpha, "task": task, "score": score, "n": n})
         #data.append({"alpha": alpha, "task": "LegalBench", "score": legalBenchScore})
@@ -195,7 +195,7 @@ def main():
     write_path = "benchmark_scores.csv"
     save_path = "alpha_summation_benchmarks"
     # Choose whether to run model or plot
-    n = 1 # numbers of examples to consider
+    n = 20 # numbers of examples to consider
     if args.mode == 'r':
         print("Running model on given alpha = " + str(args.alpha)+ "...")
         evaluate_model_mask_alpha(device, args.alpha, config, tokenizer, args.task, n, write_path, layer=0)
