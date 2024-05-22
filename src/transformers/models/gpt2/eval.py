@@ -74,7 +74,7 @@ def evaluate_model_mask_alpha(device, alpha, config, tokenizer, task, n, write_p
         generated_texts.append(generated_text)
     # Get score
     #score = get_score(generated_texts)
-    score = get_score(generated_texts, testData[i]["summary_text"])
+    score = get_score_rouge(generated_texts, testData[i]["summary_text"])
     data = []
     data.append({"alpha": alpha, "task": task, "score": score, "n": n})
     #data.append({"alpha": alpha, "task": "LegalBench", "score": legalBenchScore})
@@ -112,7 +112,7 @@ def evaluate_model_mask(device, config, tokenizer, task, n, write_path, layer=0)
             generated_texts.append(generated_text)
         # Get score
         #score = get_score(generated_texts)
-        score = get_score(generated_texts, testData[i]["summary_text"])
+        score = get_score_rouge(generated_texts, testData[i]["summary_text"])
         data = []
         data.append({"alpha": alpha, "task": task, "score": score, "n": n})
         #data.append({"alpha": alpha, "task": "LegalBench", "score": legalBenchScore})
