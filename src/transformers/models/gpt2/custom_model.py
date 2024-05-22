@@ -114,8 +114,7 @@ class GPT2WithThresholdedAttention(GPT2LMHeadModel):
             sorted_weights, indices = torch.sort(attention, dim = 3, descending=True) # Size (batch_size, num_heads, seq_length, seq_length)
             cumulative_sum = torch.cumsum(sorted_weights, dim=3) # Size (batch_size, num_heads, seq_length, seq_length)
             total_sum = cumulative_sum[:,:,:,-1].unsqueeze(dim=3) # Size (batch_size, num_heads, seq_length, 1)
-            idx = torch.nonzero(cumulative_sum < alpha * total_sum) # Size (batch_size, num_heads, seq_length, z) for z nonzero entries
-            threshold_value = indices[idx]
+            idx = torch.nonzero(cumulative_sum < alpha * total_sum, as_tuple = True) # Size (batch_size, num_heads, seq_length, z) for z nonzero entries
             # Create mask for attention value
             mask = torch.zeros_like(attention)
             mask[idx] = True
