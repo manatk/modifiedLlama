@@ -456,6 +456,10 @@ class GPT2FlashAttention2(GPT2Attention):
         )
 
         attn_weights_reshaped = attn_output.reshape(bsz, query_length, self.num_heads * self.head_dim)
+        # Modification: Zero out insufficienty attended to weights
+        attn_weights_reshaped[attn_weights_reshaped < (1 - self.threshold) * bsz] = 0
+        attn_weights_reshaped = attn_weights_reshaped / attn_weights_reshaped.sum(dim=-1, keepdim=True)
+        # Modification done
         attn_output = self.c_proj(attn_weights_reshaped)
         attn_output = self.resid_dropout(attn_output)
 

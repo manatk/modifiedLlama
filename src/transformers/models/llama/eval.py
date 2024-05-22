@@ -110,7 +110,9 @@ def get_score(model, task, tokenizer):
         generated_texts.append(generated_text)
         # Calculate perplexity
     results = perplexity.compute(predictions=generated_texts, model_id='meta-llama/Meta-Llama-3-8B')
-    return results['mean_perplexity']
+    score = results['mean_perplexity']
+    print("Got perplexity of " + str(score))
+    return score
 
 '''
 Function to plot benchmark scores for different alpha values
