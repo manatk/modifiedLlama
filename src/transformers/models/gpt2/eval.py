@@ -13,6 +13,8 @@ parser.add_argument('mode', metavar='N', type=str, nargs='?', default = 'r',
                     help='Choose whether to run model with all alpha values (\'a\'), one alpha value (\'r\'), or plot (\'p\')')
 parser.add_argument('alpha', type = float, nargs='?', default = 1,
                     help='choose alpha value')
+parser.add_argument('task', type = str, nargs='?', default = "BookSum",
+                    help='choose benchmark task')
 args = parser.parse_args()
 
 perplexity = load("perplexity", module_type="metric")
@@ -22,13 +24,14 @@ Creates attention mask from attentions of Tuple of tensor (batch_size, num_heads
 
 Attention mask is of size (batch_size, seq_length)
 '''
-def create_attention_mask(attentions, threshold):
+def create_attention_mask(attentions, alpha):
     attentions = attentions[0]
     print("Creating attention masks...")
     batch_size, num_heads, seq_length = attentions[0].size(0), attentions[0].size(1), attentions[0].size(2)
     attentions_np = np.stack([attn.detach().cpu().numpy() for attn in attentions])
     sums = np.sum(attentions_np, axis=(2,3)) # sum over heads and sequence_length rows
-    masks = np.where(sums < (1 - threshold) * num_heads * seq_length, 0, 1)
+    threshold = np.percentile(sums, (1 - alpha) * 100) # Get ((1-alpha) * 100)th percentile
+    masks = np.where(sums < threshold, 0, 1)
     print("Attention masks created.")
     return torch.from_numpy(masks).to(attentions[0].device)
 
@@ -212,10 +215,10 @@ def main():
     # Choose whether to run model or plot
     if args.mode == 'r':
         print("Running model on given alpha = " + str(args.alpha)+ "...")
-        evaluate_model_mask_alpha(device, args.alpha, config, tokenizer, "BookSum", write_path, layer=0)
+        evaluate_model_mask_alpha(device, args.alpha, config, tokenizer, args.task, write_path, layer=0)
     elif args.mode == 'a':
         print("Running model on all alpha values...")
-        evaluate_model_mask(device, config, tokenizer, "BookSum", write_path,0)
+        evaluate_model_mask(device, config, tokenizer, args.task, write_path,0)
     elif args.mode == 'p':
         print("Plotting benchmark scores...")
         plot_alpha_summation_benchmarks_from_csv(write_path, save_path)
