@@ -116,7 +116,8 @@ class GPT2WithThresholdedAttention(GPT2LMHeadModel):
             total_sum = cumulative_sum[:, :, :, -1].unsqueeze(dim=3)  # Total sum along the last dimension
 
             # Create a mask from sorted weights where cumulative sum is less than alpha * total_sum
-            mask_sorted = cumulative_sum - sorted_weights <= alpha
+            #mask_sorted = cumulative_sum - sorted_weights <= alpha
+            mask_sorted = torch.relu(cumulative_sum - sorted_weights) < alpha
             
             # Reorder mask_sorted back to the original attention shape
             mask = torch.zeros_like(mask_sorted)
